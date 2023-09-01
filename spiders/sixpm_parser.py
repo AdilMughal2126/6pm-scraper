@@ -34,7 +34,7 @@ class SixPmParser:
 
     def product_skus(self, response):
         skus, sku = [], {}
-        for size in response.css('div.Nva-z input[type="radio"]::attr(data-label)').getall():
+        for size in response.css('legend#sizingChooser+div input[type="radio"]::attr(data-label)').getall():
             sku["price"] = self.product_price(response)
             sku["previous_price"] = self.product_previous_price(response)
             sku["currency"] = self.product_currency(response)
@@ -45,7 +45,7 @@ class SixPmParser:
         return skus
 
     def product_color(self, response):
-        return response.css('#buyBoxForm+div+div+span+span').get()
+        return response.css('#buyBoxForm div span')[1].css('::text').get()
 
     def product_currency(self, response):
         return response.css('span[itemprop="priceCurrency"]::attr(content)').get()
