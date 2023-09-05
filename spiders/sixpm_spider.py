@@ -23,8 +23,6 @@ class SixPMParseSpider(Spider):
         item['category'] = self.product_category(response)
         item['skus'] = self.product_skus(response)
 
-        print(self.product_url_trail(response), "TRAILNKNJ<NSMC")
-
         return item
 
     def product_image_urls(self, response):
@@ -35,23 +33,28 @@ class SixPMParseSpider(Spider):
 
     def product_skus(self, response):
         skus = []
-        for size in response.css('legend#sizingChooser+div input[type="radio"]::attr(data-label)').getall():
+
+        stock_data = response.css('legend#sizingChooser+div input[type="radio"]::attr(data-label)').getall()
+        size_data = response.css('legend#sizingChooser+div input[type="radio"]::attr(aria-label)').getall()
+
+        for index, (stock, size) in enumerate(zip(stock_data, size_data)):
             sku = {}
             sku["price"] = self.product_price(response)
             sku["previous_price"] = self.product_previous_price(response)
             sku["currency"] = self.product_currency(response)
             sku["size"] = size
             sku["color"] = self.product_color(response)
-            sku["out_of_stock"] = False
+            sku["out_of_stock"] = "Out" in stock
+            sku["sku_id"] = self.product_sku_id(sku["color"], index)
+
+            # Append the new SKU dictionary to the skus list
             skus.append(sku)
-        index = 0
-        for stock in response.css('legend#sizingChooser+div input[type="radio"]::attr(aria-label)').getall():
-            if 'Out' in stock.split(" "):
-                skus[index]["out_of_stock"] = True
-            skus[index]["sku_id"] = f'{skus[index]["color"].replace(" ", "")}_{index}'
-            index += 1
 
         return skus
+
+
+    def product_sku_id(self, color, index):
+        return f'{color.replace(" ", "")}_{index}'
 
     def product_color(self, response):
         return response.css('#buyBoxForm div span')[1].css('::text').get()
@@ -72,7 +75,7 @@ class SixPMParseSpider(Spider):
         return response.css('div[itemprop="description"] ul li::text').getall()
 
     def product_url(self, response):
-        return response.css('meta[itemprop="url"]::attr(content)').get()
+        return response.url
 
     def product_name(self, response):
         return response.css('meta[itemprop="name"]::attr(content)').get()
@@ -108,24 +111,26 @@ class SixPMCrawlSpider(Spider):
     start_urls = [
         "https://www.6pm.com",
     ]
+    product_parser = SixPMParseSpider()
 
     def parse(self, response, **kwargs):
-        url_trail = [response.url]
+        trail = self.add_trail(response)
         selector = 'header[data-header-container="true"] div[data-sub-nav="true"] ul li a+div a::attr(href)'
         category_links = response.css(selector).getall()
         yield from response.follow_all(category_links, callback=self.parse_products,
-                                       meta={'url_trail': url_trail.copy()})
+                                       meta=trail.copy())
 
     def parse_products(self, response):
-        url_trail = response.meta.get('url_trail', [])
-        url_trail.append(response.url)
-
-        product_parser = SixPMParseSpider()
+        trail = self.add_trail(response)
         pagination_link = response.css("#searchPagination a[rel='next']").get()
         products = response.css('#products article a')
-        yield from response.follow_all(products, callback=lambda response: (yield product_parser.parse(response)),
-                                       meta={'url_trail': copy.deepcopy(url_trail)})
+        yield from response.follow_all(products, callback=lambda response: (yield self.product_parser.parse(response)),
+                                       meta=trail.copy())
 
         yield from response.follow(pagination_link, callback=self.parse_products,
-                                   meta={'url_trail': copy.deepcopy(url_trail)})
+                                   meta={'url_trail': trail.copy()})
 
+    def add_trail(self, response):
+        url_trail = response.meta.get('url_trail', [])
+        url_trail.append(response.url)
+        return {'url_trail': url_trail}
