@@ -47,7 +47,6 @@ class SixPMParseSpider(Spider):
             sku["out_of_stock"] = "Out" in stock
             sku["sku_id"] = self.product_sku_id(sku["color"], index)
 
-            # Append the new SKU dictionary to the skus list
             skus.append(sku)
 
         return skus
