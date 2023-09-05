@@ -1,9 +1,15 @@
+import copy
+
+from scrapy import Spider
+
 from sixPmScraper.constants import KEYWORDS_LIST
 from sixPmScraper.items import ProductItem
 
 
-class SixPmParser:
-    def parse_product(self, response):
+class SixPMParseSpider(Spider):
+    name = "6pm-parse"
+
+    def parse(self, response):
         item = ProductItem()
         item['retailer_sku'] = self.product_retailer_sku(response)
         item['trail'] = self.product_url_trail(response)
@@ -17,30 +23,33 @@ class SixPmParser:
         item['category'] = self.product_category(response)
         item['skus'] = self.product_skus(response)
 
+        print(self.product_url_trail(response), "TRAILNKNJ<NSMC")
+
         return item
 
     def product_image_urls(self, response):
-        product_images = response.css('#stage source::attr(srcset)').getall()
-        product_images = [image.split(' ')[2] for image in product_images]
-
-        return product_images
+        return [image.split(' ')[2] for image in response.css('#stage source::attr(srcset)').getall()]
 
     def product_url_trail(self, response):
-        url_trail = response.meta.get('url_trail', []).split('/')
-        root_url = url_trail[2]
-        main_category_url = f'{url_trail[2]}/{self.product_category(response)[0]}'
-
-        return [["", root_url], [self.product_category(response)[0], main_category_url]]
+        return response.meta.get('url_trail', [])
 
     def product_skus(self, response):
-        skus, sku = [], {}
+        skus = []
         for size in response.css('legend#sizingChooser+div input[type="radio"]::attr(data-label)').getall():
+            sku = {}
             sku["price"] = self.product_price(response)
             sku["previous_price"] = self.product_previous_price(response)
             sku["currency"] = self.product_currency(response)
             sku["size"] = size
             sku["color"] = self.product_color(response)
+            sku["out_of_stock"] = False
             skus.append(sku)
+        index = 0
+        for stock in response.css('legend#sizingChooser+div input[type="radio"]::attr(aria-label)').getall():
+            if 'Out' in stock.split(" "):
+                skus[index]["out_of_stock"] = True
+            skus[index]["sku_id"] = f'{skus[index]["color"].replace(" ", "")}_{index}'
+            index += 1
 
         return skus
 
@@ -93,14 +102,30 @@ class SixPmParser:
 
         return gender
 
-    def product_categories_link(self, response):
+
+class SixPMCrawlSpider(Spider):
+    name = "6pm-crawl"
+    start_urls = [
+        "https://www.6pm.com",
+    ]
+
+    def parse(self, response, **kwargs):
+        url_trail = [response.url]
         selector = 'header[data-header-container="true"] div[data-sub-nav="true"] ul li a+div a::attr(href)'
         category_links = response.css(selector).getall()
-        return category_links
+        yield from response.follow_all(category_links, callback=self.parse_products,
+                                       meta={'url_trail': url_trail.copy()})
 
-    def product_articles(self, response):
-        return response.css('#products article a')
+    def parse_products(self, response):
+        url_trail = response.meta.get('url_trail', [])
+        url_trail.append(response.url)
 
-    def product_page_pagination_link(self, response):
-        pagination_link = response.css("#searchPagination a[rel='next']")
-        return pagination_link
+        product_parser = SixPMParseSpider()
+        pagination_link = response.css("#searchPagination a[rel='next']").get()
+        products = response.css('#products article a')
+        yield from response.follow_all(products, callback=lambda response: (yield product_parser.parse(response)),
+                                       meta={'url_trail': copy.deepcopy(url_trail)})
+
+        yield from response.follow(pagination_link, callback=self.parse_products,
+                                   meta={'url_trail': copy.deepcopy(url_trail)})
+
