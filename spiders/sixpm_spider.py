@@ -6,7 +6,7 @@ from sixPmScraper.items import ProductItem
 
 class SixPMParseSpider(Spider):
     name = "6pm-parse"
-    defualt_gender = "unisex-adults"
+    default_gender = "unisex-adults"
 
     def parse(self, response):
         item = ProductItem()
@@ -99,7 +99,7 @@ class SixPMParseSpider(Spider):
         gender = response.css("#sizingChooser span::text").get().split(" ")[0]
 
         if gender.lower() not in ["women's", "men's"]:
-            gender = self.defualt_gender
+            gender = self.default_gender
 
         return gender
 

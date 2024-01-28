@@ -28,9 +28,6 @@ test-output.*
 /tests/keys/localhost.crt
 /tests/keys/localhost.key
 /__init__.py
-/middlewares.py
-/pipelines.py
-/settings.py
 
 # Windows
 Thumbs.db
